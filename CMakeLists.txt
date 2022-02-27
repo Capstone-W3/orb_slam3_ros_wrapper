@@ -55,6 +55,24 @@ set(LIBS
    ${OpenCV_LIBS}
 )
 
+# grid mapping mono pub node
+add_executable (${PROJECT_NAME}_mono_pub_gridmap
+   src/mono_node.cc
+   src/common.cc
+)
+target_link_libraries(${PROJECT_NAME}_mono_pub_gridmap
+   ${LIBS}
+)
+
+# grid mapping mono sub node
+add_executable (${PROJECT_NAME}_mono_sub_gridmap
+   src/mono_node.cc
+   src/common.cc
+)
+target_link_libraries(${PROJECT_NAME}_mono_sub_gridmap
+   ${LIBS}
+)
+
 # mono node
 add_executable (${PROJECT_NAME}_mono
    src/mono_node.cc
