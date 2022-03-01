@@ -57,7 +57,7 @@ set(LIBS
 
 # grid mapping mono pub node
 add_executable (${PROJECT_NAME}_mono_pub_gridmap
-   src/mono_node.cc
+   src/ros_mono_pub.cc
    src/common.cc
 )
 target_link_libraries(${PROJECT_NAME}_mono_pub_gridmap
@@ -66,7 +66,7 @@ target_link_libraries(${PROJECT_NAME}_mono_pub_gridmap
 
 # grid mapping mono sub node
 add_executable (${PROJECT_NAME}_mono_sub_gridmap
-   src/mono_node.cc
+   src/ros_mono_sub.cc
    src/common.cc
 )
 target_link_libraries(${PROJECT_NAME}_mono_sub_gridmap

@@ -5,44 +5,46 @@
 #include<chrono>
 #include <time.h>
 
+#include <sys/stat.h>
+
 #include<ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
 #include "sensor_msgs/PointCloud2.h"
 #include "geometry_msgs/PoseStamped.h"
 #include "geometry_msgs/PoseArray.h"
 
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl_conversions/pcl_conversions.h>
-
 #include<opencv2/core/core.hpp>
-
-#include"../../../include/System.h"
 
 #include "MapPoint.h"
 #include <opencv2/highgui/highgui_c.h>
 #include <opencv2/highgui/highgui.hpp>
 #include <Converter.h>
 
+// ORB-SLAM3-specific libraries. Directory is defined in CMakeLists.txt: ${ORB_SLAM3_DIR}
+#include "include/System.h"
+#include "include/ImuTypes.h"
+#include "include/KeyFrame.h"
+
 //! parameters
-bool read_from_topic = false, read_from_camera = false;
-std::string image_topic = "/camera/image_raw";
-int all_pts_pub_gap = 0;
+std::string gridmap_params;
+
+std::string image_topic;
+int all_pts_pub_gap;
+std::string pts_and_pose_topic;
+std::string all_kf_and_pts_topic;
+bool pub_all_pts;
 
 vector<string> vstrImageFilenames;
 vector<double> vTimestamps;
 cv::VideoCapture cap_obj;
 
-bool pub_all_pts = false;
 int pub_count = 0;
 
-void LoadImages(const string &strSequence, vector<string> &vstrImageFilenames,
-	vector<double> &vTimestamps);
-inline bool isInteger(const std::string & s);
 void publish(ORB_SLAM3::System &SLAM, ros::Publisher &pub_pts_and_pose,
 	ros::Publisher &pub_all_kf_and_pts, int frame_id);
 
-class ImageGrabber{
+class ImageGrabber
+{
 public:
 	ImageGrabber(ORB_SLAM3::System &_SLAM, ros::Publisher &_pub_pts_and_pose,
 		ros::Publisher &_pub_all_kf_and_pts) :
@@ -56,73 +58,42 @@ public:
 	ros::Publisher &pub_all_kf_and_pts;
 	int frame_id;
 };
-bool parseParams(int argc, char **argv);
+bool parseParams(std::string gridmap_params);
 
 using namespace std;
 
-int main(int argc, char **argv){
+int main(int argc, char **argv)
+{
 	ros::init(argc, argv, "Monopub");
-	ros::start();
-	if (!parseParams(argc, argv)) {
+	ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
+    if (argc > 1)
+    {
+        ROS_WARN ("Arguments supplied via command line are neglected.");
+    }
+
+    ros::NodeHandle node_handler;
+    std::string node_name = ros::this_node::getName();
+
+    std::string voc_file, settings_file;
+    node_handler.param<std::string>(node_name + "/voc_file", voc_file, "file_not_set");
+    node_handler.param<std::string>(node_name + "/settings_file", settings_file, "file_not_set");
+	node_handler.param<std::string>(node_name + "/gridmap_pub_params", gridmap_params, "file_not_set");
+
+	if (!parseParams(gridmap_params)) {
 		return EXIT_FAILURE;
 	}
 	int n_images = vstrImageFilenames.size();
 
 	// Create SLAM system. It initializes all system threads and gets ready to process frames.
-	ORB_SLAM3::System SLAM(argv[1], argv[2], ORB_SLAM3::System::MONOCULAR, true);
-	ros::NodeHandle nodeHandler;
-	//ros::Publisher pub_cloud = nodeHandler.advertise<sensor_msgs::PointCloud2>("cloud_in", 1000);
-	ros::Publisher pub_pts_and_pose = nodeHandler.advertise<geometry_msgs::PoseArray>("pts_and_pose", 1000);
-	ros::Publisher pub_all_kf_and_pts = nodeHandler.advertise<geometry_msgs::PoseArray>("all_kf_and_pts", 1000);
-	if (read_from_topic) {
-		ImageGrabber igb(SLAM, pub_pts_and_pose, pub_all_kf_and_pts);
-		ros::Subscriber sub = nodeHandler.subscribe(image_topic, 1, &ImageGrabber::GrabImage, &igb);
-		ros::spin();
-	}
-	else{
-		ros::Rate loop_rate(5);
-		cv::Mat im;
-		double tframe = 0;
-#ifdef COMPILEDWITHC11
-		std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
-#else
-		std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
-#endif
-		for (int frame_id = 0; read_from_camera || frame_id < n_images; ++frame_id){
-			if (read_from_camera) {
-				cap_obj.read(im);
-#ifdef COMPILEDWITHC11
-				std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-#else
-				std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
-#endif
-				tframe = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1).count();
-				//printf("fps: %f\n", 1.0 / tframe);
-			}
-			else {
-				// Read image from file
-				im = cv::imread(vstrImageFilenames[frame_id], CV_LOAD_IMAGE_UNCHANGED);
-				tframe = vTimestamps[frame_id];
-			}
-			if (im.empty()){
-				cerr << endl << "Failed to load image at: " << vstrImageFilenames[frame_id] << endl;
-				return 1;
-			}
-			// Pass the image to the SLAM system
-			cv::Mat curr_pose = SLAM.TrackMonocular(im, tframe);
+	ORB_SLAM3::System SLAM(voc_file, settings_file, ORB_SLAM3::System::MONOCULAR, true);
 
-			publish(SLAM, pub_pts_and_pose, pub_all_kf_and_pts, frame_id);
-
-			//cv::imshow("Press escape to exit", im);
-			//if (cv::waitKey(1) == 27) {
-			//	break;
-			//}
-			ros::spinOnce();
-			loop_rate.sleep();
-			if (!ros::ok()){ break; }
-		}
-	}
-	//ros::spin();
+	//ros::Publisher pub_cloud = node_handler.advertise<sensor_msgs::PointCloud2>("cloud_in", 1000);
+	ros::Publisher pub_pts_and_pose = node_handler.advertise<geometry_msgs::PoseArray>(pts_and_pose_topic, 1000);
+	ros::Publisher pub_all_kf_and_pts = node_handler.advertise<geometry_msgs::PoseArray>(all_kf_and_pts_topic, 1000);
+	
+	ImageGrabber igb(SLAM, pub_pts_and_pose, pub_all_kf_and_pts);
+	ros::Subscriber sub = node_handler.subscribe(image_topic, 1, &ImageGrabber::GrabImage, &igb);
+	ros::spin();
 
 	mkdir("results", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	SLAM.getMap()->GetCurrentMap()->Save("results//map_pts_out.obj");
@@ -141,12 +112,15 @@ int main(int argc, char **argv){
 }
 
 void publish(ORB_SLAM3::System &SLAM, ros::Publisher &pub_pts_and_pose,
-	ros::Publisher &pub_all_kf_and_pts, int frame_id) {
+			 ros::Publisher &pub_all_kf_and_pts, int frame_id) 
+{
+
 	if (all_pts_pub_gap>0 && pub_count >= all_pts_pub_gap) {
 		pub_all_pts = true;
 		pub_count = 0;
 	}
 	if (pub_all_pts || SLAM.getLoopClosing()->loop_detected || SLAM.getTracker()->loop_detected) {
+		
 		pub_all_pts = SLAM.getTracker()->loop_detected = SLAM.getLoopClosing()->loop_detected = false;
 		geometry_msgs::PoseArray kf_pt_array;
 		vector<ORB_SLAM3::KeyFrame*> key_frames = SLAM.getMap()->GetCurrentMap()->GetAllKeyFrames();
@@ -208,10 +182,11 @@ void publish(ORB_SLAM3::System &SLAM, ros::Publisher &pub_pts_and_pose,
 		kf_pt_array.poses[0] = n_kf_msg;
 		kf_pt_array.header.frame_id = "1";
 		kf_pt_array.header.seq = frame_id + 1;
-		printf("Publishing data for %u keyfranmes\n", n_kf);
+		printf("Publishing data for %u keyframes\n", n_kf);
 		pub_all_kf_and_pts.publish(kf_pt_array);
 	}
 	else if (SLAM.getTracker()->mCurrentFrame.is_keyframe) {
+
 		++pub_count;
 		SLAM.getTracker()->mCurrentFrame.is_keyframe = false;
 		ORB_SLAM3::KeyFrame* pKF = SLAM.getTracker()->mCurrentFrame.mpReferenceKF;
@@ -303,45 +278,8 @@ void publish(ORB_SLAM3::System &SLAM, ros::Publisher &pub_pts_and_pose,
 	}
 }
 
-inline bool isInteger(const std::string & s){
-	if (s.empty() || ((!isdigit(s[0])) && (s[0] != '-') && (s[0] != '+'))) return false;
-
-	char * p;
-	strtol(s.c_str(), &p, 10);
-
-	return (*p == 0);
-}
-
-void LoadImages(const string &strPathToSequence, vector<string> &vstrImageFilenames, vector<double> &vTimestamps){
-	ifstream fTimes;
-	string strPathTimeFile = strPathToSequence + "/times.txt";
-	fTimes.open(strPathTimeFile.c_str());
-	while (!fTimes.eof()){
-		string s;
-		getline(fTimes, s);
-		if (!s.empty()){
-			stringstream ss;
-			ss << s;
-			double t;
-			ss >> t;
-			vTimestamps.push_back(t);
-		}
-	}
-
-	string strPrefixLeft = strPathToSequence + "/image_0/";
-
-	const int nTimes = vTimestamps.size();
-	vstrImageFilenames.resize(nTimes);
-
-	for (int i = 0; i < nTimes; i++)
-	{
-		stringstream ss;
-		ss << setfill('0') << setw(6) << i;
-		vstrImageFilenames[i] = strPrefixLeft + ss.str() + ".png";
-	}
-}
-
-void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg){
+void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
+{
 	// Copy the ros image message to cv::Mat.
 	cv_bridge::CvImageConstPtr cv_ptr;
 	try{
@@ -356,41 +294,30 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg){
 	++frame_id;
 }
 
-bool parseParams(int argc, char **argv) {
-	if (argc < 4){
-		cerr << endl << "Usage: rosrun ORB_SLAM3 Monopub path_to_vocabulary path_to_settings path_to_sequence/camera_id/-1 <image_topic>" << endl;
-		return 1;
-	}
-	if (isInteger(std::string(argv[3]))) {
-		int camera_id = atoi(argv[3]);
-		if (camera_id >= 0){
-			read_from_camera = true;
-			printf("Reading images from camera with id %d\n", camera_id);
-			cap_obj.open(camera_id);
-			if (!(cap_obj.isOpened())) {
-				printf("Camera stream could not be initialized successfully\n");
-				ros::shutdown();
-				return 0;
-			}
-			int img_height = cap_obj.get(CV_CAP_PROP_FRAME_HEIGHT);
-			int img_width = cap_obj.get(CV_CAP_PROP_FRAME_WIDTH);
-			printf("Images are of size: %d x %d\n", img_width, img_height);
-		}
-		else {
-			read_from_topic = true;
-			if (argc > 4){
-				image_topic = std::string(argv[4]);
-			}
-			printf("Reading images from topic %s\n", image_topic.c_str());
-		}
-	}
-	else {
-		LoadImages(string(argv[3]), vstrImageFilenames, vTimestamps);
-	}
-	if (argc >= 5) {
-		all_pts_pub_gap = atoi(argv[4]);
-	}
-	printf("all_pts_pub_gap: %d\n", all_pts_pub_gap);
+bool parseParams(std::string gridmap_params) 
+{
+	if (gridmap_params == "file_not_set")
+    {
+        ROS_ERROR("Please provide voc_file and settings_file in the launch file");       
+        ros::shutdown();
+        return -1;
+    }
+
+	//Check settings file
+    cv::FileStorage gridmapParams(gridmap_params.c_str(), cv::FileStorage::READ);
+    if(!gridmapParams.isOpened())
+    {
+       cerr << "Failed to open settings file at: " << gridmap_params << endl;
+       exit(-1);
+    }
+
+	image_topic = (string)gridmapParams["Topic.image_topic"];
+	all_pts_pub_gap = gridmapParams["Pub.all_pts_pub_gap"];
+	pts_and_pose_topic = (string)gridmapParams["Topic.pts_and_pose"];
+	all_kf_and_pts_topic = (string)gridmapParams["Topic.all_kf_and_pts"];
+	pub_all_pts = ("true" == ((string) gridmapParams["Pub.pub_all_pts"]));
+	pub_all_pts = true;
+
 	return 1;
 }
 

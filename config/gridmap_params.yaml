@@ -1,0 +1,24 @@
+%YAML:1.0
+
+Topic.image_topic: "/camera/image_raw"
+Topic.pts_and_pose: "/pts_and_pose"
+Topic.all_kf_and_pts: "/all_kf_and_pts"
+Topic.grid_map: "/grid_map"
+
+Pub.pub_all_pts: "true"
+Pub.all_pts_pub_gap: 0
+
+Sub.scale_factor: 3
+Sub.resize_factor: 5
+Sub.cloud_max_x: 10
+Sub.cloud_min_x: -10.0
+Sub.cloud_max_z: 16
+Sub.cloud_min_z: -5
+Sub.free_thresh: 0.55
+Sub.occupied_thresh: 0.50
+Sub.thresh_diff: 0.01
+Sub.visit_thresh: 0
+Sub.upper_left_x: -1.5
+Sub.upper_left_y: -2.5
+Sub.resolution: 10
+Sub.use_local_counters: 0

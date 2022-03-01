@@ -5,16 +5,14 @@
 #include<fstream>
 #include<chrono>
 
+#include <sys/stat.h>
+
 #include<ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
 #include "sensor_msgs/PointCloud2.h"
 #include "geometry_msgs/PoseStamped.h"
 #include "geometry_msgs/PoseArray.h"
 #include "nav_msgs/OccupancyGrid.h"
-
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl_conversions/pcl_conversions.h>
 
 #include<opencv2/core/core.hpp>
 
@@ -23,20 +21,24 @@
 #include <Converter.h>
 
 // parameters
-float scale_factor = 3;
-float resize_factor = 5;
-float cloud_max_x = 10;
-float cloud_min_x = -10.0;
-float cloud_max_z = 16;
-float cloud_min_z = -5;
-float free_thresh = 0.55;
-float occupied_thresh = 0.50;
-float thresh_diff = 0.01;
-int visit_thresh = 0;
-float upper_left_x = -1.5;
-float upper_left_y = -2.5;
-const int resolution = 10;
-unsigned int use_local_counters = 0;
+std::string gridmap_params;
+std::string pts_and_pose_topic;
+std::string all_kf_and_pts_topic;
+std::string grid_map_topic;
+float scale_factor;
+float resize_factor;
+float cloud_max_x;
+float cloud_min_x;
+float cloud_max_z;
+float cloud_min_z;
+float free_thresh;
+float occupied_thresh;
+float thresh_diff;
+int visit_thresh;
+float upper_left_x;
+float upper_left_y;
+int resolution;
+unsigned int use_local_counters;
 
 float grid_max_x, grid_min_x,grid_max_z, grid_min_z;
 cv::Mat global_occupied_counter, global_visit_counter;
@@ -62,7 +64,7 @@ void kfCallback(const geometry_msgs::PoseStamped::ConstPtr& camera_pose);
 void saveMap(unsigned int id = 0);
 void ptCallback(const geometry_msgs::PoseArray::ConstPtr& pts_and_pose);
 void loopClosingCallback(const geometry_msgs::PoseArray::ConstPtr& all_kf_and_pts);
-void parseParams(int argc, char **argv);
+void parseParams(std::string gridmap_params);
 void printParams();
 void showGridMap(unsigned int id = 0);
 void getMixMax(const geometry_msgs::PoseArray::ConstPtr& pts_and_pose,
@@ -75,10 +77,24 @@ void getGridMap();
 
 int main(int argc, char **argv){
 	ros::init(argc, argv, "Monosub");
-	ros::start();
+	ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
+    if (argc > 1)
+    {
+        ROS_WARN ("Arguments supplied via command line are neglected.");
+    }
 
-	parseParams(argc, argv);
+    ros::NodeHandle node_handler;
+    std::string node_name = ros::this_node::getName();
+
+	node_handler.param<std::string>(node_name + "/gridmap_sub_params", gridmap_params, "file_not_set");
+
+	parseParams(gridmap_params);
 	printParams();
+
+	ros::Subscriber sub_pts_and_pose = node_handler.subscribe(pts_and_pose_topic, 1000, ptCallback);
+	ros::Subscriber sub_all_kf_and_pts = node_handler.subscribe(all_kf_and_pts_topic, 1000, loopClosingCallback);
+	pub_grid_map = node_handler.advertise<nav_msgs::OccupancyGrid>(grid_map_topic, 1000);
+
 
 	grid_max_x = cloud_max_x*scale_factor;
 	grid_min_x = cloud_min_x*scale_factor;
@@ -119,15 +135,10 @@ int main(int argc, char **argv){
 	printf("norm_factor_x: %f\n", norm_factor_x);
 	printf("norm_factor_z: %f\n", norm_factor_z);
 
-	ros::NodeHandle nodeHandler;
-	ros::Subscriber sub_pts_and_pose = nodeHandler.subscribe("pts_and_pose", 1000, ptCallback);
-	ros::Subscriber sub_all_kf_and_pts = nodeHandler.subscribe("all_kf_and_pts", 1000, loopClosingCallback);
-	pub_grid_map = nodeHandler.advertise<nav_msgs::OccupancyGrid>("grid_map", 1000);
 
-
-	//ros::Subscriber sub_cloud = nodeHandler.subscribe("cloud_in", 1000, cloudCallback);
-	//ros::Subscriber sub_kf = nodeHandler.subscribe("camera_pose", 1000, kfCallback);
-	//ros::Subscriber sub = nodeHandler.subscribe("/camera/image_raw", 1, &ImageGrabber::GrabImage, &igb);
+	//ros::Subscriber sub_cloud = node_handler.subscribe("cloud_in", 1000, cloudCallback);
+	//ros::Subscriber sub_kf = node_handler.subscribe("camera_pose", 1000, kfCallback);
+	//ros::Subscriber sub = node_handler.subscribe("/camera/image_raw", 1, &ImageGrabber::GrabImage, &igb);
 
 	ros::spin();
 	ros::shutdown();
@@ -351,11 +362,9 @@ void resetGridMap(const geometry_msgs::PoseArray::ConstPtr& all_kf_and_pts){
 		return;
 	}
 	printf("Resetting grid map with %d key frames\n", n_kf);
-#ifdef COMPILEDWITHC11
+
 	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
-#else
-	std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
-#endif
+
 	unsigned int id = 0;
 	for (unsigned int kf_id = 0; kf_id < n_kf; ++kf_id){
 		const geometry_msgs::Point &kf_location = all_kf_and_pts->poses[++id].position;
@@ -387,11 +396,9 @@ void resetGridMap(const geometry_msgs::PoseArray::ConstPtr& all_kf_and_pts){
 		id += n_pts;
 	}	
 	getGridMap();
-#ifdef COMPILEDWITHC11
+
 	std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-#else
-	std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
-#endif
+
 	double ttrack = std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
 	printf("Done. Time taken: %f secs\n", ttrack);
 	pub_grid_map.publish(grid_map_msg);
@@ -460,38 +467,41 @@ void showGridMap(unsigned int id) {
 	}
 }
 
-void parseParams(int argc, char **argv) {
-	int arg_id = 1;
-	if (argc > arg_id){
-		scale_factor = atof(argv[arg_id++]);
-	}
-	if (argc > arg_id){
-		resize_factor = atof(argv[arg_id++]);
-	}
-	if (argc > arg_id){
-		cloud_max_x = atof(argv[arg_id++]);
-	}
-	if (argc > arg_id){
-		cloud_min_x = atof(argv[arg_id++]);
-	}	
-	if (argc > arg_id){
-		cloud_max_z = atof(argv[arg_id++]);
-	}
-	if (argc > arg_id){
-		cloud_min_z = atof(argv[arg_id++]);
-	}
-	if (argc > arg_id){
-		free_thresh = atof(argv[arg_id++]);
-	}
-	if (argc > arg_id){
-		occupied_thresh = atof(argv[arg_id++]);
-	}
-	if (argc > arg_id){
-		use_local_counters = atoi(argv[arg_id++]);
-	}
-	if (argc > arg_id){
-		visit_thresh = atoi(argv[arg_id++]);
-	}
+void parseParams(std::string gridmap_params) {
+
+	if (gridmap_params == "file_not_set")
+    {
+        ROS_ERROR("Please provide gridmap_params in the launch file");       
+        ros::shutdown();
+    }
+
+	//Check settings file
+    cv::FileStorage gridmapParams(gridmap_params.c_str(), cv::FileStorage::READ);
+    if(!gridmapParams.isOpened())
+    {
+       cerr << "Failed to open settings file at: " << gridmap_params << endl;
+       exit(-1);
+    }
+
+	scale_factor = gridmapParams["Sub.scale_factor"];
+	resize_factor = gridmapParams["Sub.resize_factor"];
+	cloud_max_x = gridmapParams["Sub.cloud_max_x"];
+	cloud_min_x = gridmapParams["Sub.cloud_min_x"];
+	cloud_max_z = gridmapParams["Sub.cloud_max_z"];
+	cloud_min_z = gridmapParams["Sub.cloud_min_z"];
+	free_thresh = gridmapParams["Sub.free_thresh"];
+	occupied_thresh = gridmapParams["Sub.occupied_thresh"];
+	thresh_diff = gridmapParams["Sub.thresh_diff"];
+	visit_thresh = gridmapParams["Sub.visit_thresh"];
+	upper_left_x = gridmapParams["Sub.upper_left_x"];
+	upper_left_y = gridmapParams["Sub.upper_left_y"];
+	resolution = gridmapParams["Sub.resolution"];
+	use_local_counters = (unsigned int) (int) gridmapParams["Sub.use_local_counters"];
+
+	pts_and_pose_topic = (std::string) gridmapParams["Topic.pts_and_pose"];
+	all_kf_and_pts_topic = (std::string) gridmapParams["Topic.all_kf_and_pts"];
+	grid_map_topic = (std::string) gridmapParams["Topic.grid_map"];
+
 }
 
 void printParams() {
@@ -502,7 +512,15 @@ void printParams() {
 	//printf("cloud_min: %f, %f\n", cloud_min_x, cloud_min_z);
 	printf("free_thresh: %f\n", free_thresh);
 	printf("occupied_thresh: %f\n", occupied_thresh);
-	printf("use_local_counters: %d\n", use_local_counters);
+	printf("thresh_diff: %d\n", thresh_diff);
 	printf("visit_thresh: %d\n", visit_thresh);
+	printf("upper_left_x: %d\n", upper_left_x);
+	printf("upper_left_y: %d\n", upper_left_y);
+	printf("resolution: %d\n", resolution);
+	printf("use_local_counters: %d\n", use_local_counters);
 
+	std::cout << "\nTopic.pts_and_pose: " << pts_and_pose_topic << std::endl;
+	std::cout << "Topic.all_kf_and_pts: " << all_kf_and_pts_topic << std::endl;
+	std::cout << "Topic.grid_map: " << grid_map_topic << std::endl;
+		
 }
