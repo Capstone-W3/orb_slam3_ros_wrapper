@@ -1,0 +1,26 @@
+<launch>
+
+    <node name="orb_slam3_gridmap_sub" pkg="orb_slam3_ros_wrapper" type="orb_slam3_ros_wrapper_mono_sub_gridmap" output="screen">
+
+        <!-- Parameters for original ORB-SLAM3 -->
+        <param name="gridmap_sub_params" type="string"   value="$(find orb_slam3_ros_wrapper)/config/gridmap_params.yaml" />
+
+    </node>
+    
+    <node name="orb_slam3_gridmap_pub" pkg="orb_slam3_ros_wrapper" type="orb_slam3_ros_wrapper_mono_pub_gridmap" output="screen">
+        <!-- for drone image raw -->
+        <!-- <remap from="/camera/image_raw" to="/ardrone/image_raw"/> -->
+
+        <!-- Parameters for original ORB-SLAM3 -->
+        <param name="voc_file"      type="string"   value="$(find orb_slam3_ros_wrapper)/../../../ORB_SLAM3/Vocabulary/ORBvoc.txt" />
+        <param name="settings_file" type="string"   value="$(find orb_slam3_ros_wrapper)/config/ardrone_front_sample.yaml" />
+        <param name="gridmap_pub_params" type="string"   value="$(find orb_slam3_ros_wrapper)/config/front_camera_gridmap_params.yaml" />
+
+    </node>
+
+
+
+
+    <!-- Visualization - RViz-->
+
+</launch>
