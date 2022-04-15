@@ -39,6 +39,7 @@ void publish_ros_pose_tf(cv::Mat Tcw, ros::Time current_frame_time, ORB_SLAM3::S
     }
 }
 
+// Publishes transformation from the map frame to the camera pose frame
 void publish_tf_transform(tf::Transform tf_transform, ros::Time current_frame_time)
 {
     static tf::TransformBroadcaster tf_broadcaster;
@@ -46,6 +47,7 @@ void publish_tf_transform(tf::Transform tf_transform, ros::Time current_frame_ti
     tf_broadcaster.sendTransform(tf::StampedTransform(tf_transform, current_frame_time, map_frame_id, pose_frame_id));
 }
 
+// Publishes pose of the camera with respect to the map frame
 void publish_pose_stamped(tf::Transform tf_transform, ros::Time current_frame_time)
 {
     tf::Stamped<tf::Pose> grasp_tf_pose(tf_transform, current_frame_time, map_frame_id);
@@ -103,6 +105,7 @@ void setup_tf_orb_to_ros(ORB_SLAM3::System::eSensor sensor_type)
     
 }
 
+// from 4x4 Homogeneous transformation matrix to tf::Transform
 tf::Transform from_orb_to_ros_tf_transform(cv::Mat transformation_mat)
 {
     cv::Mat orb_rotation(3, 3, CV_32F);

@@ -31,6 +31,17 @@ MESSAGE(${Eigen3_VERSION})
 
 find_package(Pangolin REQUIRED)
 
+# adding for point cloud viewer and mapper
+find_package( PCL 1.7 REQUIRED )
+find_package(catkin REQUIRED COMPONENTS 
+  roscpp
+  sensor_msgs
+  message_generation
+  tf
+  image_transport
+  cv_bridge
+  )
+
 catkin_package (
    CATKIN_DEPENDS roscpp rospy std_msgs cv_bridge image_transport tf sensor_msgs message_runtime
    LIBRARIES {PROJECT_NAME}
@@ -44,6 +55,8 @@ include_directories(
    ${EIGEN3_INCLUDE_DIR}
    ${catkin_INCLUDE_DIRS}
    ${Pangolin_INCLUDE_DIRS}
+   ${PCL_INCLUDE_DIRS}
+   ${catkin_INCLUDE_DIRS}
 )
 
 # Build ROS nodes
@@ -53,6 +66,8 @@ set(LIBS
    ${catkin_LIBRARIES}
    ${Pangolin_LIBRARIES}
    ${OpenCV_LIBS}
+   ${PCL_LIBRARIES}
+   ${catkin_LIBRARIES}
 )
 
 # grid mapping mono pub node

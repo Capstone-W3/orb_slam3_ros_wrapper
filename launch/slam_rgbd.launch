@@ -1,0 +1,10 @@
+
+  
+<launch>  
+
+	<!-- Run other launch file -->
+    <include file="$(find orb_slam3_ros_wrapper)/launch/octomap.launch" />
+	<include file="$(find orb_slam3_ros_wrapper)/launch/orb_slam3_rgbd_dataset.launch" />
+	<node pkg="rviz" name="rviz" type="rviz" /> 
+	
+</launch>
