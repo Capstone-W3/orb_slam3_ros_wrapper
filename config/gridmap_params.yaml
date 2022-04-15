@@ -1,6 +1,6 @@
 %YAML:1.0
 
-Topic.image_topic: "/camera/image_raw"
+Topic.image_topic: "/ardrone/front/image_raw"
 Topic.pts_and_pose: "/pts_and_pose"
 Topic.all_kf_and_pts: "/all_kf_and_pts"
 Topic.grid_map: "/grid_map"

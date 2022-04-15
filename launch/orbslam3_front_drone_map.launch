@@ -9,7 +9,7 @@
     
     <node name="orb_slam3_gridmap_pub" pkg="orb_slam3_ros_wrapper" type="orb_slam3_ros_wrapper_mono_pub_gridmap" output="screen">
         <!-- for drone image raw -->
-        <!-- <remap from="/camera/image_raw" to="/ardrone/image_raw"/> -->
+        <!-- <remap from="/camera/image_raw" to="/ardrone/front/image_raw"/> -->
 
         <!-- Parameters for original ORB-SLAM3 -->
         <param name="voc_file"      type="string"   value="$(find orb_slam3_ros_wrapper)/../../../ORB_SLAM3/Vocabulary/ORBvoc.txt" />
